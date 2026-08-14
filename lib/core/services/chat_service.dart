@@ -11,66 +11,154 @@ class ChatMessage {
     required this.isUser,
     required this.timestamp,
   });
+
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        'isUser': isUser,
+        'timestamp': timestamp.toIso8601String(),
+      };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+        text: json['text'] ?? '',
+        isUser: json['isUser'] ?? false,
+        timestamp: json['timestamp'] != null
+            ? DateTime.parse(json['timestamp'])
+            : DateTime.now(),
+      );
 }
 
 class ChatService {
-  // Split key to bypass GitHub secret scan rules
-  final String _apiKey = 'AQ.'
-      'Ab8RN6JL35T_'
-      'hTa1rl62a53_'
-      'JsQ7quLXvOOE5BpZU2c9aN1Saw';
-      
-  final String _model = 'gemini-1.5-flash';
+  // Default server address for Android emulator (10.0.2.2) on port 4000
+  String serverUrl = 'http://10.0.2.2:4000';
 
-  Future<String> getResponse(String userMessage) async {
+  Future<List<Map<String, String>>> fetchThreads() async {
     try {
-      final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey',
-      );
-
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'contents': [
-            {
-              'parts': [
-                {
-                  'text': 'You are AgriVision AI, an expert agricultural advisor. Answer the following question from a farmer concisely, practically, and professionally: $userMessage'
-                }
-              ]
-            }
-          ]
-        }),
-      ).timeout(const Duration(seconds: 6));
-
+      final response = await http.get(Uri.parse('$serverUrl/api/threads'))
+          .timeout(const Duration(seconds: 3));
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final candidates = data['candidates'] as List;
-        if (candidates.isNotEmpty) {
-          final content = candidates[0]['content'];
-          final parts = content['parts'] as List;
-          if (parts.isNotEmpty) {
-            return parts[0]['text'] ?? 'No text generated.';
-          }
-        }
+        final List data = json.decode(response.body);
+        return data.map((t) => {
+          'id': t['id'].toString(),
+          'label': t['label'].toString()
+        }).toList();
       }
-    } catch (_) {
-      // Fallback locally on network timeout or service issues
-    }
+    } catch (_) {}
+    return [];
+  }
 
-    // Local diagnostic database fallback
+  Future<Map<String, String>> createThread(String label) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$serverUrl/api/threads'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'label': label}),
+      ).timeout(const Duration(seconds: 3));
+
+      if (response.statusCode == 201) {
+        final data = json.decode(response.body);
+        return {
+          'id': data['id'].toString(),
+          'label': data['label'].toString(),
+        };
+      }
+    } catch (_) {}
+    return {
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'label': label,
+    };
+  }
+
+  Future<List<ChatMessage>> fetchMessages(String threadId) async {
+    try {
+      final response = await http.get(Uri.parse('$serverUrl/api/threads/$threadId/messages'))
+          .timeout(const Duration(seconds: 3));
+      if (response.statusCode == 200) {
+        final List data = json.decode(response.body);
+        return data.map((m) => ChatMessage.fromJson(m)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<ChatMessage> sendChatMessage(String threadId, String messageText) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$serverUrl/api/threads/$threadId/messages'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'text': messageText}),
+      ).timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 201) {
+        final data = json.decode(response.body);
+        return ChatMessage.fromJson(data['botMessage']);
+      }
+    } catch (_) {}
+
+    // Fallback simulation in case connection to Node server is offline
+    await Future.delayed(const Duration(milliseconds: 1000));
+    return ChatMessage(
+      text: _getLocalAdvisory(messageText),
+      isUser: false,
+      timestamp: DateTime.now(),
+    );
+  }
+
+  Future<bool> renameThread(String threadId, String label) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$serverUrl/api/threads/$threadId'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'label': label}),
+      ).timeout(const Duration(seconds: 3));
+      return response.statusCode == 200;
+    } catch (_) {}
+    return true;
+  }
+
+  Future<bool> deleteThread(String threadId) async {
+    try {
+      final response = await http.delete(Uri.parse('$serverUrl/api/threads/$threadId'))
+          .timeout(const Duration(seconds: 3));
+      return response.statusCode == 200;
+    } catch (_) {}
+    return true;
+  }
+
+  String _getLocalAdvisory(String userMessage) {
     final msg = userMessage.toLowerCase();
+
     if (msg.contains('tomato') || msg.contains('early blight') || msg.contains('late blight')) {
-      return "For Tomato Blight, remove infected leaves immediately. Spray copper-based fungicides. Ensure you water only the soil, not the leaves, to keep humidity low around the plants.";
-    } else if (msg.contains('potato')) {
-      return "Potato plants thrive in well-drained soil. Watch out for Early Blight (target-like spots). Practice crop rotation and use certified disease-free seed tubers.";
-    } else if (msg.contains('rice') || msg.contains('blast')) {
-      return "Rice Blast can be devastating. Avoid applying excess nitrogen fertilizer. Maintain optimal flooding in the field and use blast-resistant seeds.";
-    } else if (msg.contains('fertilizer') || msg.contains('npk')) {
-      return "A standard NPK (Nitrogen-Phosphorus-Potassium) balance is key. Increase Potassium (K) at the fruiting stages to support strong crop skin and disease resistance.";
+      return "For Tomato Blight, remove infected leaves immediately. Spray copper-based fungicides or bio-fungicides (Bacillus subtilis). Ensure you water only the soil, not the leaves, to keep humidity low around the plants.";
     }
 
-    return "Thank you for asking. I am currently offline, but you can check your internet connection so I can consult the Gemini AI servers directly.";
+    if (msg.contains('potato') || msg.contains('tuber')) {
+      return "Potato plants thrive in well-drained soil. Watch out for Early Blight (target-like spots). Ensure crop rotation is practiced and use certified disease-free seed tubers.";
+    }
+
+    if (msg.contains('rice') || msg.contains('blast') || msg.contains('blight')) {
+      return "Rice Blast can be devastating. Avoid applying excess nitrogen fertilizer, which increases infection rates. Maintain optimal flooding in the field and use blast-resistant seeds.";
+    }
+
+    if (msg.contains('chili') || msg.contains('curl') || msg.contains('whitefly')) {
+      return "Chili leaf curl is viral and spread by whiteflies. To manage it, spray organic neem oil or soapy water to control whiteflies, and pull out highly infected plants to stop the virus from spreading.";
+    }
+
+    if (msg.contains('fertilizer') || msg.contains('urea') || msg.contains('npk')) {
+      return "A standard NPK (Nitrogen-Phosphorus-Potassium) balance is key. Sucking pests love nitrogen-heavy, succulent leaves. For fruiting stages (tomato, chili), increase Potassium (K) to support strong fruit skin and disease resistance.";
+    }
+
+    if (msg.contains('weather') || msg.contains('rain')) {
+      return "Always check the local forecast before spraying pesticides or applying fertilizer. Heavy rains will wash them off. If rain is expected, ensure your drainage channels are clear to prevent waterlogging.";
+    }
+
+    if (msg.contains('organic') || msg.contains('neem') || msg.contains('natural')) {
+      return "Organic farming utilizes bio-control methods. Neem oil (1% dilution with a few drops of dish soap) is excellent for sucking pests. Bacillus thuringiensis (Bt) is great for caterpillars. Composted cow manure builds soil immunity.";
+    }
+
+    if (msg.contains('hello') || msg.contains('hi') || msg.contains('hey')) {
+      return "Hello! I am AgriVision's AI Assistant. You can ask me about crop diseases, pest controls, fertilizers, watering advice, or how to use our scanning features. How can I help you today?";
+    }
+
+    return "Thank you for sharing that. To best assist you with your crops, could you tell me which crop you are growing (e.g., Tomato, Rice, Chili) or describe the symptoms you are seeing on the leaves?";
   }
 }

@@ -34,15 +34,46 @@ class ChatProvider with ChangeNotifier {
   }
 
   ChatProvider() {
-    // Start initial default thread
-    startNewThread(initialLabel: "Welcome Conversation");
+    _loadThreads();
   }
 
-  void startNewThread({String? initialLabel}) {
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
+  Future<void> _loadThreads() async {
+    try {
+      final remoteThreads = await _chatService.fetchThreads();
+      if (remoteThreads.isNotEmpty) {
+        _threads.clear();
+        for (var rt in remoteThreads) {
+          final msgs = await _chatService.fetchMessages(rt['id']!);
+          _threads.add(ChatThread(
+            id: rt['id']!,
+            label: rt['label']!,
+            messages: msgs.isNotEmpty ? msgs : [
+              ChatMessage(
+                text: "Hello! I am AgriVision's AI Assistant. You can ask me about crop diseases, pest controls, fertilizers, watering advice, or how to use our scanning features. How can I help you today?",
+                isUser: false,
+                timestamp: DateTime.now(),
+              )
+            ],
+          ));
+        }
+        _currentThreadId = _threads.first.id;
+        notifyListeners();
+      } else {
+        await startNewThread(initialLabel: "Welcome Conversation");
+      }
+    } catch (_) {
+      await startNewThread(initialLabel: "Welcome Conversation");
+    }
+  }
+
+  Future<void> startNewThread({String? initialLabel}) async {
+    final label = initialLabel ?? 'New Discussion';
+    final remoteThread = await _chatService.createThread(label);
+    final id = remoteThread['id']!;
+    
     final thread = ChatThread(
       id: id,
-      label: initialLabel ?? 'New Discussion',
+      label: remoteThread['label']!,
       messages: [
         ChatMessage(
           text: "Hello! I am AgriVision's AI Assistant. You can ask me about crop diseases, pest controls, fertilizers, watering advice, or how to use our scanning features. How can I help you today?",
@@ -63,17 +94,17 @@ class ChatProvider with ChangeNotifier {
     }
   }
 
-  void renameThread(String id, String newLabel) {
+  Future<void> renameThread(String id, String newLabel) async {
     final idx = _threads.indexWhere((t) => t.id == id);
     if (idx != -1 && newLabel.trim().isNotEmpty) {
       _threads[idx].label = newLabel.trim();
       notifyListeners();
+      await _chatService.renameThread(id, newLabel.trim());
     }
   }
 
-  void deleteThread(String id) {
+  Future<void> deleteThread(String id) async {
     if (_threads.length <= 1) {
-      // Keep at least one active thread
       clearChat();
       return;
     }
@@ -82,6 +113,7 @@ class ChatProvider with ChangeNotifier {
       _currentThreadId = _threads.last.id;
     }
     notifyListeners();
+    await _chatService.deleteThread(id);
   }
 
   Future<void> sendMessage(String text) async {
@@ -97,6 +129,7 @@ class ChatProvider with ChangeNotifier {
       final words = text.split(' ');
       final title = words.take(4).join(' ');
       activeThread.label = title.length > 24 ? '${title.substring(0, 22)}...' : title;
+      await _chatService.renameThread(activeThread.id, activeThread.label);
     }
 
     final userMsg = ChatMessage(
@@ -109,12 +142,8 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final responseText = await _chatService.getResponse(text);
-      activeThread.messages.add(ChatMessage(
-        text: responseText,
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
+      final botMsg = await _chatService.sendChatMessage(activeThread.id, text);
+      activeThread.messages.add(botMsg);
     } catch (_) {
       activeThread.messages.add(ChatMessage(
         text: "Sorry, I encountered an issue processing your query. Please try again.",

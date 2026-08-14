@@ -47,72 +47,28 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     showDialog(
       context: context,
       builder: (context) {
-        return DiagnosticsDialog(controller: controller, provider: provider, threadId: threadId);
-      },
-    );
-  }
-
-  void _speakMessage(BuildContext context, String text) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.volume_up, color: Colors.green, size: 28),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Voice Synthesizer (TTS)',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-              const Divider(height: 32),
-              const LinearProgressIndicator(color: Colors.green),
-              const SizedBox(height: 16),
-              const Text(
-                'Reading aloud crop diagnosis response to farmer...',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                text.length > 100 ? '${text.substring(0, 100)}...' : text,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Stop Playback'),
-              ),
-            ],
+        return AlertDialog(
+          title: const Text('Rename Conversation'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(labelText: 'Chat Label'),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty) {
+                  provider.renameThread(threadId, controller.text.trim());
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('Rename'),
+            ),
+          ],
         );
-      },
-    );
-  }
-
-  void _startVoiceListening(BuildContext context, ChatProvider provider) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return VoiceListeningSheet(provider: provider);
       },
     );
   }
@@ -172,6 +128,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 ],
               ),
             ),
+            // Start New Chat Button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: ElevatedButton.icon(
@@ -241,6 +198,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       ),
       body: Column(
         children: [
+          // Messages List
           Expanded(
             child: chatProvider.messages.isEmpty
                 ? _buildEmptyState(context, colorScheme, theme)
@@ -254,9 +212,15 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                     },
                   ),
           ),
+
+          // Typing Indicator
           if (chatProvider.isTyping) _buildTypingIndicator(colorScheme),
+
+          // Suggestion chips (only when chat is fresh/empty)
           if (chatProvider.messages.length <= 1 && !chatProvider.isTyping)
             _buildSuggestions(context, chatProvider, colorScheme),
+
+          // Input field
           _buildInputField(context, chatProvider, colorScheme, theme),
         ],
       ),
@@ -271,7 +235,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           Icon(Icons.chat_bubble_outline, size: 64, color: colors.primary.withOpacity(0.3)),
           const SizedBox(height: 16),
           const Text('No messages yet', style: TextStyle(fontWeight: FontWeight.bold)),
-          Text('Type or speak a question below to begin', style: TextStyle(color: theme.hintColor)),
+          Text('Type a question below to start chatting', style: TextStyle(color: theme.hintColor)),
         ],
       ),
     );
@@ -294,36 +258,22 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       child: Column(
         crossAxisAlignment: alignment,
         children: [
-          Row(
-            mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (!isUser) ...[
-                IconButton(
-                  icon: const Icon(Icons.volume_up, size: 18, color: Colors.green),
-                  tooltip: 'Read Aloud',
-                  onPressed: () => _speakMessage(context, message.text),
-                ),
-                const SizedBox(width: 4),
-              ],
-              Container(
-                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.70),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(16),
-                    topRight: const Radius.circular(16),
-                    bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
-                    bottomRight: isUser ? Radius.zero : const Radius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  message.text,
-                  style: TextStyle(color: textColor, height: 1.4, fontSize: 13.5),
-                ),
+          Container(
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
+                bottomRight: isUser ? Radius.zero : const Radius.circular(16),
               ),
-            ],
+            ),
+            child: Text(
+              message.text,
+              style: TextStyle(color: textColor, height: 1.4, fontSize: 13.5),
+            ),
           ),
           const SizedBox(height: 4),
           Text(timeStr, style: TextStyle(color: theme.hintColor, fontSize: 10)),
@@ -392,12 +342,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: Icon(Icons.mic, color: colors.primary, size: 26),
-            tooltip: 'Speak Query',
-            onPressed: () => _startVoiceListening(context, provider),
-          ),
-          const SizedBox(width: 4),
           Expanded(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -435,188 +379,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
               },
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class DiagnosticsDialog extends StatelessWidget {
-  const DiagnosticsDialog({
-    super.key,
-    required this.controller,
-    required this.provider,
-    required this.threadId,
-  });
-
-  final TextEditingController controller;
-  final ChatProvider provider;
-  final String threadId;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Rename Conversation'),
-      content: TextField(
-        controller: controller,
-        decoration: const InputDecoration(labelText: 'Chat Label'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            if (controller.text.trim().isNotEmpty) {
-              provider.renameThread(threadId, controller.text.trim());
-            }
-            Navigator.pop(context);
-          },
-          child: const Text('Rename'),
-        ),
-      ],
-    );
-  }
-}
-
-class VoiceListeningSheet extends StatefulWidget {
-  final ChatProvider provider;
-  const VoiceListeningSheet({super.key, required this.provider});
-
-  @override
-  State<VoiceListeningSheet> createState() => _VoiceListeningSheetState();
-}
-
-class _VoiceListeningSheetState extends State<VoiceListeningSheet> with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
-  String _listeningStatus = "Listening to crop query...";
-  String _transcribingText = "";
-  bool _isFinished = false;
-
-  final List<String> _voiceShortcuts = [
-    "How to manage early tomato blight in UP?",
-    "Best NPK ratio for potato leaves?",
-    "Organic spray recipe for chili thrips.",
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat(reverse: true);
-
-    // Simulate transcribing typing
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (mounted) {
-        setState(() {
-          _transcribingText = "How to treat ";
-        });
-      }
-    });
-
-    Future.delayed(const Duration(milliseconds: 2400), () {
-      if (mounted) {
-        setState(() {
-          _transcribingText = "How to treat late tomato blight in monsoon?";
-          _listeningStatus = "Speech processed successfully!";
-          _isFinished = true;
-          _animController.stop();
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 10),
-          Text(
-            _listeningStatus,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 24),
-          // Pulsing microphone wave animation
-          AnimatedBuilder(
-            animation: _animController,
-            builder: (context, child) {
-              return Container(
-                padding: EdgeInsets.all(16 + (_animController.value * 12)),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: CircleAvatar(
-                  radius: 36,
-                  backgroundColor: colors.primary,
-                  child: const Icon(Icons.mic, color: Colors.white, size: 36),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colors.surfaceVariant.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              _transcribingText.isEmpty ? "Speak now..." : _transcribingText,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                fontStyle: _transcribingText.isEmpty ? FontStyle.italic : FontStyle.normal,
-                color: _transcribingText.isEmpty ? Colors.grey : Colors.black,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (!_isFinished) ...[
-            Text(
-              'Or tap a quick command:',
-              style: TextStyle(fontSize: 11, color: theme.hintColor, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            ..._voiceShortcuts.map((phrase) => Card(
-              elevation: 0,
-              color: colors.primary.withOpacity(0.04),
-              child: ListTile(
-                dense: true,
-                title: Text(phrase, style: const TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.keyboard_voice, size: 16),
-                onTap: () {
-                  widget.provider.sendMessage(phrase);
-                  Navigator.pop(context);
-                },
-              ),
-            )),
-          ] else ...[
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              onPressed: () {
-                widget.provider.sendMessage(_transcribingText);
-                Navigator.pop(context);
-              },
-              child: const Text('Send Voice Input'),
-            ),
-          ],
         ],
       ),
     );
